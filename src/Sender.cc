@@ -18,6 +18,7 @@
 #include <algorithm>
 
 #include <Cycles.h>
+#include <PerfUtils/TimeTrace.h>
 
 #include "ControlPacket.h"
 #include "Debug.h"
@@ -327,6 +328,7 @@ Sender::handleErrorPacket(Driver::Packet* packet, Driver* driver)
 void
 Sender::sendMessage(Sender::Message* message, Driver::Address destination)
 {
+    PerfUtils::TimeTrace::record("Sender::sendMessage : START");
     // Prepare the message
     {
         SpinLock::UniqueLock lock(mutex);
@@ -373,6 +375,7 @@ Sender::sendMessage(Sender::Message* message, Driver::Address destination)
         assert(message->PACKET_HEADER_LENGTH ==
                sizeof(Protocol::Packet::DataHeader));
     }
+    PerfUtils::TimeTrace::record("Sender::sendMessage : Prepared");
 
     // Queue the message for sending
     {
@@ -383,6 +386,7 @@ Sender::sendMessage(Sender::Message* message, Driver::Address destination)
         pingTimeouts.setTimeout(&message->pingTimeout);
         hintMessageReady(message, lock, lock_message);
     }
+    PerfUtils::TimeTrace::record("Sender::sendMessage : Scheduled");
 
     // Try to send the message immediately
     trySend();
@@ -511,6 +515,7 @@ Sender::trySend()
     uint32_t queuedBytesEstimate = transport->driver->getQueuedBytes();
     auto it = readyQueue.begin();
     while (it != readyQueue.end()) {
+        PerfUtils::TimeTrace::record("Sender::trySend : Found ready message");
         Message& message = *it;
         SpinLock::Lock lock_message(message.mutex);
         assert(message.driver == transport->driver);
@@ -531,12 +536,15 @@ Sender::trySend()
             assert(message.unsentBytes >= packetDataBytes);
             message.unsentBytes -= packetDataBytes;
             ++message.sentIndex;
+            PerfUtils::TimeTrace::record("Sender::trySend : Packet Sent");
         }
         if (message.sentIndex >= message.getNumPackets()) {
             // We have finished sending the message.
             message.state.store(Message::State::SENT);
             transport->hintUpdatedOp(message.op);
             it = readyQueue.remove(it);
+            PerfUtils::TimeTrace::record(
+                "Sender::trySend : Message marked SENT");
         } else if (message.sentIndex >= message.grantIndex) {
             // We have sent every granted packet.
             it = readyQueue.remove(it);

@@ -19,6 +19,7 @@
 #include <memory>
 #include <utility>
 
+#include <PerfUtils/TimeTrace.h>
 #include "Cycles.h"
 
 #include "Protocol.h"
@@ -112,6 +113,8 @@ Transport::Op::processUpdates(const SpinLock::Lock& lock)
             if (inMessage != nullptr) {
                 state.store(State::COMPLETED);
                 transport->hintUpdatedOp(this);
+                PerfUtils::TimeTrace::record(
+                    "Transport::Op::processUpdates : RemoteOp marked COMPLETE");
             } else if (outState == Sender::Message::State::FAILED) {
                 state.store(State::FAILED);
                 transport->hintUpdatedOp(this);
@@ -366,6 +369,8 @@ Transport::processInboundMessages()
 {
     for (Receiver::Message* message = receiver->receiveMessage();
          message != nullptr; message = receiver->receiveMessage()) {
+        PerfUtils::TimeTrace::record(
+            "Transport::processInboundMessages : Message Received");
         const Protocol::Message::Header* header =
             message->getHeader<Protocol::Message::Header>();
         message->allocHeader<Protocol::Message::Header>();
@@ -378,6 +383,9 @@ Transport::processInboundMessages()
                 message->registerOp(op);
                 op->inMessage = message;
                 hintUpdatedOp(op);
+                PerfUtils::TimeTrace::record(
+                    "Transport::processInboundMessages : RemoteOp reply "
+                    "attached");
             } else {
                 // There is no RemoteOp waiting for this message; Drop it.
                 receiver->dropMessage(message);
@@ -385,7 +393,11 @@ Transport::processInboundMessages()
         } else {
             // Incoming message is a request.
             SpinLock::UniqueLock lock(mutex);
+            PerfUtils::TimeTrace::record(
+                "Transport::processInboundMessages : New ServerOp : START");
             Op* op = opPool.construct(this, driver, header->opId, true);
+            PerfUtils::TimeTrace::record(
+                "Transport::processInboundMessages : Op constructed");
             activeOps.insert(op);
 
             // Lock handoff

@@ -21,6 +21,7 @@
 
 #include <unistd.h>
 
+#include <PerfUtils/TimeTrace.h>
 #include <rte_malloc.h>
 
 #include "CodeLocation.h"
@@ -195,6 +196,7 @@ DpdkDriver::allocPacket()
 void
 DpdkDriver::sendPacket(Driver::Packet* packet)
 {
+    PerfUtils::TimeTrace::record("Driver::sendPacket : START");
     Internal* d = reinterpret_cast<Internal*>(members);
 
     Internal::Packet* pkt = static_cast<Internal::Packet*>(packet);
@@ -295,6 +297,7 @@ DpdkDriver::sendPacket(Driver::Packet* packet)
     if (!d->corked) {
         rte_eth_tx_buffer_flush(d->port, 0, d->tx.buffer);
     }
+    PerfUtils::TimeTrace::record("Driver::sendPacket : DONE");
 }
 
 // See Driver::cork()
@@ -725,6 +728,7 @@ Internal::txBurstCallback(uint16_t port_id, uint16_t queue,
     assert(bytesToSend <= stats->bufferedBytes);
     stats->bufferedBytes -= bytesToSend;
     stats->queueEstimator.signalBytesSent(bytesToSend);
+    PerfUtils::TimeTrace::record("Driver: %u packets sent", nb_pkts);
     return nb_pkts;
 }
 

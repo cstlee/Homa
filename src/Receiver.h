@@ -20,6 +20,8 @@
 #include <deque>
 #include <unordered_map>
 
+#include <PerfUtils/TimeTrace.h>
+
 #include <Homa/Driver.h>
 
 #include "ControlPacket.h"
@@ -170,9 +172,11 @@ class Receiver {
      */
     static inline void sendDonePacket(Message* message, Driver* driver)
     {
+        PerfUtils::TimeTrace::record("Receiver::sendDonePacket : START");
         SpinLock::Lock lock_message(message->mutex);
         ControlPacket::send<Protocol::Packet::DoneHeader>(
             driver, message->source, message->id);
+        PerfUtils::TimeTrace::record("Receiver::sendDonePacket : DONE");
     }
 
     /**
@@ -185,9 +189,11 @@ class Receiver {
      */
     static inline void sendErrorPacket(Message* message, Driver* driver)
     {
+        PerfUtils::TimeTrace::record("Receiver::sendErrorPacket : START");
         SpinLock::Lock lock_message(message->mutex);
         ControlPacket::send<Protocol::Packet::ErrorHeader>(
             driver, message->source, message->id);
+        PerfUtils::TimeTrace::record("Receiver::sendErrorPacket : DONE");
     }
 
   private:

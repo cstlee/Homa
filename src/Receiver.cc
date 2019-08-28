@@ -16,6 +16,7 @@
 #include "Receiver.h"
 
 #include <Cycles.h>
+#include <PerfUtils/TimeTrace.h>
 
 #include "Transport.h"
 
@@ -79,6 +80,7 @@ Receiver::~Receiver()
 void
 Receiver::handleDataPacket(Driver::Packet* packet, Driver* driver)
 {
+    PerfUtils::TimeTrace::record("Receiver::handleDataPacket : START");
     SpinLock::UniqueLock lock(mutex);
 
     Protocol::Packet::DataHeader* header =
@@ -94,9 +96,13 @@ Receiver::handleDataPacket(Driver::Packet* packet, Driver* driver)
         message = it->second;
     } else {
         // New message
+        PerfUtils::TimeTrace::record(
+            "Receiver::handleDataPacket : New Message : START");
         uint32_t messageLength = header->totalLength;
         message =
             messagePool.construct(driver, dataHeaderLength, messageLength);
+        PerfUtils::TimeTrace::record(
+            "Receiver::handleDataPacket : New Message : Constructed");
         message->id = id;
         message->source = packet->address;
         message->numExpectedPackets =
@@ -152,12 +158,15 @@ Receiver::handleDataPacket(Driver::Packet* packet, Driver* driver)
             message->state.store(Message::State::COMPLETED);
             SpinLock::Lock lock_received_messages(receivedMessages.mutex);
             receivedMessages.queue.push_back(&message->receivedMessageNode);
+            PerfUtils::TimeTrace::record(
+                "Receiver::handleDataPacket : Message marked COMPLETE");
         }
     } else {
         lock.unlock();  // End Receiver critical section
         // must be a duplicate packet; drop packet.
         driver->releasePackets(&packet, 1);
     }
+    PerfUtils::TimeTrace::record("Receiver::handleDataPacket : DONE");
     return;
 }
 
@@ -462,6 +471,7 @@ Receiver::runScheduler()
             ControlPacket::send<Protocol::Packet::GrantHeader>(
                 message->driver, message->source, message->id,
                 message->grantIndexLimit, message->priority);
+            PerfUtils::TimeTrace::record("Receiver::runScheduler : Grant sent");
         }
         if (message->numExpectedPackets > message->grantIndexLimit) {
             // Continue to schedule this message.
