@@ -249,6 +249,86 @@ class OutMessage {
 };
 
 /**
+ * Connection-less socket that can be used to send and receive Homa messages.
+ *
+ * This class is thread-safe.
+ */
+class Socket {
+  public:
+    using Address = SocketAddress;
+
+    /**
+     * Custom deleter for use with Homa::unique_ptr.
+     */
+    struct Deleter {
+        void operator()(Socket* socket)
+        {
+            socket->close();
+        }
+    };
+
+    /**
+     * Allocate Message that can be sent with this Socket.
+     *
+     * @param sourcePort
+     *      Port number of the socket from which the message will be sent.
+     * @return
+     *      A pointer to the allocated message or nullptr if the socket has
+     *      been shut down.
+     */
+    virtual Homa::unique_ptr<Homa::OutMessage> alloc() = 0;
+
+    /**
+     * Check for and return a Message sent to this Socket if available.
+     *
+     * @param blocking
+     *      When set to true, this method should not return until a message
+     *      arrives or the socket is shut down.
+     * @return
+     *      Pointer to the received message, if any.  Otherwise, nullptr is
+     *      returned if no message has been delivered or the socket has been
+     *      shut down.
+     */
+    virtual Homa::unique_ptr<Homa::InMessage> receive(bool blocking) = 0;
+
+    /**
+     * Disable the socket.  Once a socket is shut down, all ongoing/subsequent
+     * requests on the socket will return a failure.
+     *
+     * When multiple threads are working on a socket, this method can be used
+     * to notify other threads to drop their references to this socket so that
+     * the caller can safely close() the socket.
+     */
+    virtual void shutdown() = 0;
+
+    /**
+     * Check if the Socket has been shut down.
+     */
+    virtual bool isShutdown() const = 0;
+
+    /**
+     * Return the local IP address and port number of this Socket.
+     */
+    virtual Socket::Address getLocalAddress() const = 0;
+
+  protected:
+    /**
+     * Use protected destructor to prevent users from calling delete on pointers
+     * to this interface.
+     */
+    ~Socket() = default;
+
+    /**
+     * Signal that this Socket is no longer needed.  No one should access this
+     * socket after this call.
+     *
+     * Note: outgoing messages already allocated from this socket will not be
+     * affected.
+     */
+    virtual void close() = 0;
+};
+
+/**
  * Provides a means of communicating across the network using the Homa protocol.
  *
  * The transport is used to send and receive messages across the network using
@@ -261,46 +341,15 @@ class OutMessage {
 class Transport {
   public:
     /**
-     * Return a new instance of a Homa-based transport.
+     * Create a socket that can be used to send and receive messages.
      *
-     * The caller is responsible for calling free() on the returned pointer.
-     *
-     * @param driver
-     *      Driver with which this transport should send and receive packets.
-     * @param transportId
-     *      This transport's unique identifier in the group of transports among
-     *      which this transport will communicate.
+     * @param port
+     *      The port number allocated to the socket.
      * @return
-     *      Pointer to the new transport instance.
+     *      Pointer to the new socket, if the port number is not in use;
+     *      nullptr, otherwise.
      */
-    static Transport* create(Driver* driver, uint64_t transportId);
-
-    /**
-     * Allocate Message that can be sent with this Transport.
-     *
-     * @param sourcePort
-     *      Port number of the socket from which the message will be sent.
-     * @return
-     *      A pointer to the allocated message.
-     */
-    virtual Homa::unique_ptr<Homa::OutMessage> alloc(uint16_t sourcePort) = 0;
-
-    /**
-     * Check for and return a Message sent to this Transport if available.
-     *
-     * @return
-     *      Pointer to the received message, if any.  Otherwise, nullptr is
-     *      returned if no message has been delivered.
-     */
-    virtual Homa::unique_ptr<Homa::InMessage> receive() = 0;
-
-    /**
-     * Make incremental progress performing all Transport functionality.
-     *
-     * This method MUST be called for the Transport to make progress and should
-     * be called frequently to ensure timely progress.
-     */
-    virtual void poll() = 0;
+    virtual Homa::unique_ptr<Socket> open(uint16_t port) = 0;
 
     /**
      * Return the driver that this transport uses to send and receive packets.
